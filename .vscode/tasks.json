@@ -163,9 +163,34 @@
             },
             "group": {
                 "kind": "build",
-                "isDefault": true
+                "isDefault": false
             },
         },
+        {
+            "type": "shell",
+            "label": "Build Docker Images (Local)",
+            "command": "docker-compose",
+            "args": [
+                "-f",
+                "docker-compose.yml",
+                "-f",
+                "docker-compose.local.yml",
+                "up",
+                "-d",
+                "--build"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "DOCKER_BUILDKIT": "1",
+                    "COMPOSE_BAKE": "false"
+                }
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+        }
     ],
     "version": "2.0.0"
 }

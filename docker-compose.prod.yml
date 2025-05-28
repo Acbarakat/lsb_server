@@ -1,0 +1,184 @@
+x-anchors:
+    xi_base: &xi_base
+        depends_on:
+            - db
+            - traefik
+        networks:
+            - lsb
+
+    xi_env: &xi_env
+        XI_NETWORK_SQL_HOST: db
+        XI_NETWORK_SQL_PORT: 3306
+        XI_NETWORK_SQL_LOGIN: xiuser
+        XI_NETWORK_SQL_PASSWORD: xipassword
+        XI_NETWORK_SQL_DATABASE: xidb
+        XI_NETWORK_LOGIN_DATA_IP: 0.0.0.0
+        XI_NETWORK_LOGIN_DATA_PORT: 54230
+        XI_NETWORK_LOGIN_VIEW_IP: 0.0.0.0
+        XI_NETWORK_LOGIN_VIEW_PORT: 54001
+        XI_NETWORK_LOGIN_AUTH_IP: 0.0.0.0
+        XI_NETWORK_LOGIN_AUTH_PORT: 54231
+        XI_NETWORK_ZMQ_IP: 0.0.0.0
+        XI_NETWORK_ZMQ_PORT: 54003
+        # UPDATE THIS TO THE LAN IP OF THE HOST MACHINE
+        XI_NETWORK_ZONE_IP: xi_map
+        # 192.168.50.248
+        XI_NETWORK_MAP_PORT: 54230
+        XI_NETWORK_SEARCH_PORT: 54002
+
+    xi_labels: &xi_labels
+        traefik.enable: "true"
+
+
+
+services:
+  db:
+    image: mariadb
+    restart: always
+    environment:
+      MYSQL_USER: xiuser
+      MYSQL_PASSWORD: xipassword
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: xidb
+    networks:
+      - lsb
+    volumes:
+      - ./sql:/docker-entrypoint-initdb.d
+      - ./data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    profiles:
+      - default
+      - local
+
+  db_admin_portal:
+    image: adminer
+    restart: always
+    depends_on:
+      - db
+    networks:
+      - lsb
+    ports:
+      - "8080:8080"
+    profiles:
+      - default
+
+  xi_connect:
+    <<: *xi_base
+    build:
+      dockerfile: Dockerfile
+      target: runtime
+    environment:
+      <<: *xi_env
+      TARGET_BIN: xi_connect
+    expose:
+        - "54230"
+        - "54231"
+        - "54001"
+    labels:
+      <<: *xi_labels
+      traefik.tcp.routers.connect.rule: "HostSNI(`*`)"
+      traefik.tcp.routers.connect.entrypoints: "connect"
+      traefik.tcp.routers.connect.service: "svc_connect"
+      traefik.tcp.services.svc_connect.loadbalancer.server.port: "54230"
+
+      traefik.tcp.routers.connect1.rule: "HostSNI(`*`)"
+      traefik.tcp.routers.connect1.entrypoints: "connect1"
+      traefik.tcp.routers.connect1.service: "svc_connect1"
+      traefik.tcp.services.svc_connect1.loadbalancer.server.port: "54231"
+
+      traefik.tcp.routers.connect2.rule: "HostSNI(`*`)"
+      traefik.tcp.routers.connect2.entrypoints: "connect2"
+      traefik.tcp.routers.connect2.service: "svc_connect2"
+      traefik.tcp.services.svc_connect2.loadbalancer.server.port: "54001"
+    profiles:
+      - default
+      - local
+
+  xi_search:
+    <<: *xi_base
+    build:
+      dockerfile: Dockerfile
+      target: runtime
+    environment:
+      <<: *xi_env
+      TARGET_BIN: xi_search
+    expose:
+      - "54002"
+    labels:
+      <<: *xi_labels
+      traefik.tcp.routers.search.rule: "HostSNI(`*`)"
+      traefik.tcp.routers.search.entrypoints: "search"
+      traefik.tcp.routers.search.service: "svc_search"
+      traefik.tcp.services.svc_search.loadbalancer.server.port: "54002"
+    profiles:
+      - default
+      - local
+
+  xi_map:
+    <<: *xi_base
+    build:
+      dockerfile: Dockerfile
+      target: runtime
+    environment:
+      <<: *xi_env
+      TARGET_BIN: xi_map
+    expose:
+        - "54230"
+    labels:
+      <<: *xi_labels
+      traefik.udp.routers.game.service: "svc_game"
+      traefik.udp.services.svc_game.loadbalancer.server.port: "54230"
+    volumes:
+      - ./navmeshes/:/server/navmeshes/
+      - ./losmeshes/:/server/losmeshes/
+    profiles:
+      - default
+      - local
+
+  xi_world:
+    <<: *xi_base
+    build:
+      dockerfile: Dockerfile
+      target: runtime
+    environment:
+      <<: *xi_env
+      TARGET_BIN: xi_world
+    profiles:
+      - default
+      - local
+
+  traefik:
+    image: traefik
+    restart: unless-stopped
+    command:
+        - "--api.insecure=true"
+        - "--api.dashboard=true"
+        - "--providers.docker"
+        - "--log.level=DEBUG"
+    ports:
+      # The HTTP port
+      - "8081:80"
+      # The Web UI (enabled by --api.insecure=true)
+      - "8082:8080"
+      - "54231:54231/tcp"
+      - "54230:54230/tcp"
+      - "54230:54230/udp"
+      - "54001:54001/tcp"
+      - "54002:54002/tcp"
+    volumes:
+        - "/var/run/docker.sock:/var/run/docker.sock:ro"
+        - ./traefik.yml:/etc/traefik/traefik.yml
+    networks:
+      - web
+      - lsb
+    profiles:
+      - default
+
+
+
+networks:
+  lsb:
+    external: false
+  web:
+    external: true

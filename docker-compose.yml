@@ -1,0 +1,132 @@
+x-anchors:
+    xi_base: &xi_base
+        depends_on:
+            - db
+        volumes:
+            - ./.git:/server/.git
+            - ./settings:/server/settings
+            - ./log:/server/log
+            - ./modules:/server/modules
+
+    xi_env: &xi_env
+        XI_NETWORK_SQL_HOST: db
+        # XI_NETWORK_SQL_PORT: 3306
+        XI_NETWORK_SQL_LOGIN: xiuser
+        XI_NETWORK_SQL_PASSWORD: xipassword
+        XI_NETWORK_SQL_DATABASE: xidb
+        XI_NETWORK_ZONE_IP: 127.0.0.1
+        # XI_NETWORK_LOGIN_DATA_IP: 0.0.0.0
+        # XI_NETWORK_LOGIN_DATA_PORT: 54230
+        # XI_NETWORK_LOGIN_VIEW_IP: 0.0.0.0
+        # XI_NETWORK_LOGIN_VIEW_PORT: 54001
+        # XI_NETWORK_LOGIN_AUTH_IP: 0.0.0.0
+        # XI_NETWORK_LOGIN_AUTH_PORT: 54231
+        # XI_NETWORK_ZMQ_PORT: 54003
+        XI_NETWORK_ZMQ_IP: xi_world
+        # XI_NETWORK_MAP_PORT: 54230
+        # XI_NETWORK_SEARCH_IP: 0.0.0.0
+        # XI_NETWORK_SEARCH_PORT: 54002
+
+    xi_labels: &xi_labels
+        traefik.enable: "true"
+
+
+
+services:
+  db:
+    image: mariadb
+    restart: always
+    environment:
+      MYSQL_USER: xiuser
+      MYSQL_PASSWORD: xipassword
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: xidb
+    volumes:
+      - ./sql:/docker-entrypoint-initdb.d
+      - lsb_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+
+  db_admin_portal:
+    image: adminer
+    pull_policy: always
+    restart: always
+    depends_on:
+      - db
+    ports:
+      - "8080:8080"
+
+  xi_connect:
+    <<: *xi_base
+    build:
+      dockerfile: Dockerfile
+      target: runtime
+    environment:
+      <<: *xi_env
+      TARGET_BIN: xi_connect
+    labels:
+      <<: *xi_labels
+      traefik.tcp.routers.connect.rule: "HostSNI(`*`)"
+      traefik.tcp.routers.connect.entrypoints: "connect"
+      traefik.tcp.routers.connect.service: "svc_connect"
+      traefik.tcp.services.svc_connect.loadbalancer.server.port: "54230"
+
+      traefik.tcp.routers.connect1.rule: "HostSNI(`*`)"
+      traefik.tcp.routers.connect1.entrypoints: "connect1"
+      traefik.tcp.routers.connect1.service: "svc_connect1"
+      traefik.tcp.services.svc_connect1.loadbalancer.server.port: "54231"
+
+      traefik.tcp.routers.connect2.rule: "HostSNI(`*`)"
+      traefik.tcp.routers.connect2.entrypoints: "connect2"
+      traefik.tcp.routers.connect2.service: "svc_connect2"
+      traefik.tcp.services.svc_connect2.loadbalancer.server.port: "54001"
+
+  xi_search:
+    <<: *xi_base
+    build:
+      dockerfile: Dockerfile
+      target: runtime
+    environment:
+      <<: *xi_env
+      TARGET_BIN: xi_search
+    labels:
+      <<: *xi_labels
+      traefik.tcp.routers.search.rule: "HostSNI(`*`)"
+      traefik.tcp.routers.search.entrypoints: "search"
+      traefik.tcp.routers.search.service: "svc_search"
+      traefik.tcp.services.svc_search.loadbalancer.server.port: "54002"
+
+  xi_map:
+    <<: *xi_base
+    build:
+        dockerfile: Dockerfile
+        target: runtime
+    environment:
+        <<: *xi_env
+        TARGET_BIN: xi_map
+    labels:
+        <<: *xi_labels
+        traefik.udp.routers.game.service: "svc_game"
+        traefik.udp.services.svc_game.loadbalancer.server.port: "54230"
+    volumes:
+        - ./.git:/server/.git
+        - ./settings:/server/settings
+        - ./log:/server/log
+        - ./modules:/server/modules
+        - ./navmeshes/:/server/navmeshes/
+        - ./losmeshes/:/server/losmeshes/
+
+  xi_world:
+    <<: *xi_base
+    build:
+        dockerfile: Dockerfile
+        target: runtime
+    restart: on-failure
+    environment:
+        <<: *xi_env
+        TARGET_BIN: xi_world
+        XI_NETWORK_ZMQ_IP: 0.0.0.0
+
+volumes:
+  lsb_data:
+    external: true

@@ -235,10 +235,6 @@ modules/init.txt
 # Doxygen
 doxygen/
 
-# Docker (not supported)
-Dockerfile
-docker-compose*
-
 # dSYM folders for Mac OS debugging
 xi_map.dSYM
 xi_connect.dSYM
@@ -256,3 +252,6 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+
+# mariadb files
+/data
